@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gallery</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; }
+
+  nav { border-bottom: 1px solid #efefef; padding: 16px 0; text-align: center; position: sticky; top: 0; background: #fff; z-index: 100; }
+  nav h1 { font-size: 1rem; font-weight: 600; letter-spacing: 1px; }
+  nav .back-btn { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 2rem; cursor: pointer; color: #111; display: none; font-weight: 300; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .grid-wrap { max-width: 935px; margin: 0 auto; padding: 20px 12px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+  .grid-item { aspect-ratio: 1; overflow: hidden; cursor: pointer; position: relative; background: #f5f5f5; }
+  .grid-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+  .grid-item:hover img { transform: scale(1.03); }
+  .multi-icon { position: absolute; top: 8px; right: 8px; color: #fff; font-size: 1rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+
+  .detail-wrap { max-width: 700px; margin: 0 auto; padding: 24px 12px; }
+  .slider { position: relative; background: #f5f5f5; border-radius: 4px; overflow: hidden; aspect-ratio: 1; }
+  .slider img { width: 100%; height: 100%; object-fit: contain; display: none; }
+  .slider img.active { display: block; }
+  .slider-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.85); border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 1rem; cursor: pointer; }
+  .slider-btn.prev { left: 10px; }
+  .slider-btn.next { right: 10px; }
+  .slider-dots { text-align: center; margin-top: 12px; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ddd; margin: 0 3px; cursor: pointer; }
+  .dot.active { background: #111; }
+  .thumb-row { display: flex; gap: 6px; margin-top: 12px; overflow-x: auto; padding-bottom: 4px; }
+  .thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 3px; cursor: pointer; opacity: 0.5; flex-shrink: 0; border: 2px solid transparent; }
+  .thumb.active { opacity: 1; border-color: #111; }
+</style>
+</head>
+<body>
+
+<nav>
+  <button class="back-btn" id="backBtn">‹</button>
+  <h1 id="navTitle">GALLERY</h1>
+</nav>
+
+<div class="page active" id="gridPage">
+  <div class="grid-wrap">
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<div class="page" id="detailPage">
+  <div class="detail-wrap">
+    <div class="slider" id="slider"></div>
+    <div class="slider-dots" id="dots"></div>
+    <div class="thumb-row" id="thumbRow"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+  let currentPost = null;
+  let currentSlide = 0;
+
+  const gridEl = document.getElementById('grid');
+  const slider = document.getElementById('slider');
+  const dotsEl = document.getElementById('dots');
+  const thumbRow = document.getElementById('thumbRow');
+  const backBtn = document.getElementById('backBtn');
+  const navTitle = document.getElementById('navTitle');
+
+  function renderGrid() {
+    gridEl.innerHTML = '';
+    if (!POSTS.length) {
+      gridEl.innerHTML = '<p style="text-align:center;color:#aaa;font-size:0.9rem;margin-top:60px;grid-column:1/-1;">게시글이 없어요.</p>';
+      return;
+    }
+    POSTS.forEach((post, i) => {
+      const item = document.createElement('div');
+      item.className = 'grid-item';
+      const img = document.createElement('img');
+      img.src = post.thumb;
+      item.appendChild(img);
+      if (post.images.length > 1) {
+        const icon = document.createElement('span');
+        icon.className = 'multi-icon';
+        icon.textContent = '⧉';
+        item.appendChild(icon);
+      }
+      item.onclick = () => openDetail(i);
+      gridEl.appendChild(item);
+    });
+  }
+
+  function openDetail(i) {
+    currentPost = POSTS[i];
+    currentSlide = 0;
+    renderSlider();
+    document.getElementById('gridPage').classList.remove('active');
+    document.getElementById('detailPage').classList.add('active');
+    backBtn.style.display = 'block';
+    navTitle.textContent = '';
+  }
+
+  backBtn.onclick = () => {
+    document.getElementById('detailPage').classList.remove('active');
+    document.getElementById('gridPage').classList.add('active');
+    backBtn.style.display = 'none';
+    navTitle.textContent = 'GALLERY';
+  };
+
+  function renderSlider() {
+    slider.innerHTML = '';
+    dotsEl.innerHTML = '';
+    thumbRow.innerHTML = '';
+    currentPost.images.forEach((src, i) => {
+      const img = document.createElement('img');
+      img.src = src;
+      if (i === currentSlide) img.classList.add('active');
+      slider.appendChild(img);
+
+      const dot = document.createElement('span');
+      dot.className = 'dot' + (i === currentSlide ? ' active' : '');
+      dot.onclick = () => goSlide(i);
+      dotsEl.appendChild(dot);
+
+      const th = document.createElement('img');
+      th.className = 'thumb' + (i === currentSlide ? ' active' : '');
+      th.src = src;
+      th.onclick = () => goSlide(i);
+      thumbRow.appendChild(th);
+    });
+
+    if (currentPost.images.length > 1) {
+      const prev = document.createElement('button');
+      prev.className = 'slider-btn prev';
+      prev.textContent = '‹';
+      prev.onclick = () => goSlide(currentSlide - 1);
+      const next = document.createElement('button');
+      next.className = 'slider-btn next';
+      next.textContent = '›';
+      next.onclick = () => goSlide(currentSlide + 1);
+      slider.appendChild(prev);
+      slider.appendChild(next);
+    }
+  }
+
+  function goSlide(n) {
+    const imgs = slider.querySelectorAll('img');
+    const dots = dotsEl.querySelectorAll('.dot');
+    const thumbs = thumbRow.querySelectorAll('.thumb');
+    const total = currentPost.images.length;
+    currentSlide = (n + total) % total;
+    imgs.forEach((el, i) => el.classList.toggle('active', i === currentSlide));
+    dots.forEach((el, i) => el.classList.toggle('active', i === currentSlide));
+    thumbs.forEach((el, i) => el.classList.toggle('active', i === currentSlide));
+  }
+
+  renderGrid();
+</script>
+</body>
+</html>
