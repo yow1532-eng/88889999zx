@@ -17,7 +17,6 @@
   .page { display: none; }
   .page.active { display: block; }
 
-  /* GRID */
   .grid-wrap { max-width: 935px; margin: 0 auto; padding: 20px 12px; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
   .grid-item { aspect-ratio: 1; overflow: hidden; cursor: pointer; position: relative; background: #f5f5f5; }
@@ -28,7 +27,6 @@
   .grid-item:hover .delete-btn { display: block; }
   .empty-msg { text-align: center; color: #aaa; font-size: 0.9rem; margin-top: 60px; grid-column: 1/-1; }
 
-  /* DETAIL - 스크롤 뷰 */
   .detail-wrap { max-width: 700px; margin: 0 auto; padding: 16px 12px 40px; }
   .detail-images { display: flex; flex-direction: column; gap: 4px; }
   .detail-images img { width: 100%; height: auto; display: block; border-radius: 2px; cursor: zoom-in; }
@@ -36,7 +34,7 @@
   /* LIGHTBOX */
   .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 500; flex-direction: column; justify-content: center; align-items: center; }
   .lightbox.open { display: flex; }
-  .lightbox-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 16px; }
+  .lightbox-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 16px; overflow: hidden; }
   .lightbox-img-wrap img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 4px; transition: transform 0.1s; transform-origin: center center; cursor: grab; }
   .lightbox-img-wrap img.grabbing { cursor: grabbing; }
   .lightbox-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; z-index: 10; }
@@ -71,7 +69,6 @@
   .btn-crop { background: #f0f0f0; color: #111; font-size: 0.8rem; padding: 4px 10px; border-radius: 4px; border: none; cursor: pointer; margin-top: 4px; display: none; }
   .uploading { text-align: center; color: #888; font-size: 0.85rem; margin-top: 8px; }
 
-  /* CROP MODAL */
   .crop-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 300; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
   .crop-modal.open { display: flex; }
   .crop-container { position: relative; display: inline-block; cursor: crosshair; user-select: none; }
@@ -82,7 +79,6 @@
   .btn-crop-cancel { background: rgba(255,255,255,0.15); color: #fff; }
   .btn-crop-apply { background: #fff; color: #111; font-weight: 600; }
 
-  /* DELETE CONFIRM */
   .confirm-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 400; align-items: center; justify-content: center; }
   .confirm-modal.open { display: flex; }
   .confirm-box { background: #fff; border-radius: 10px; padding: 28px; width: 90%; max-width: 320px; text-align: center; }
@@ -112,11 +108,10 @@
   </div>
 </div>
 
-<!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox">
   <span class="lightbox-counter" id="lightboxCounter"></span>
   <button class="lightbox-close" id="lightboxClose">✕</button>
-  <div class="lightbox-img-wrap">
+  <div class="lightbox-img-wrap" id="lightboxWrap">
     <button class="lightbox-arrow prev" id="lightboxPrev">‹</button>
     <img id="lightboxImg" src="" alt="">
     <button class="lightbox-arrow next" id="lightboxNext">›</button>
@@ -124,7 +119,6 @@
   <div class="lightbox-thumbs" id="lightboxThumbs"></div>
 </div>
 
-<!-- ADD POST MODAL -->
 <div class="modal" id="modal">
   <div class="modal-box">
     <h2>새 게시글</h2>
@@ -146,7 +140,6 @@
   </div>
 </div>
 
-<!-- CROP MODAL -->
 <div class="crop-modal" id="cropModal">
   <div class="crop-container" id="cropContainer">
     <img id="cropImg" src="" alt="crop">
@@ -158,7 +151,6 @@
   </div>
 </div>
 
-<!-- DELETE CONFIRM MODAL -->
 <div class="confirm-modal" id="confirmModal">
   <div class="confirm-box">
     <p>이 게시글을 삭제할까요?</p>
@@ -177,14 +169,14 @@
   const { createClient } = supabase;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  let posts = [];
-  let currentPost = null;
-  let selectedThumbIdx = 0;
-  let pendingFiles = [];
-  let croppedThumb = null;
-  let deleteTargetId = null;
+  let posts = [], currentPost = null, selectedThumbIdx = 0;
+  let pendingFiles = [], croppedThumb = null, deleteTargetId = null;
+  let lbImages = [], lbIdx = 0;
+  let scale = 1, panX = 0, panY = 0, isPanning = false;
+  let panStartX = 0, panStartY = 0, pinchDist = 0;
   let cropStart = null, cropEnd = null, isDragging = false;
 
+  // DOM refs
   const gridEl = document.getElementById('grid');
   const modal = document.getElementById('modal');
   const fileInput = document.getElementById('fileInput');
@@ -201,7 +193,12 @@
   const uploadingMsg = document.getElementById('uploadingMsg');
   const confirmModal = document.getElementById('confirmModal');
   const detailImages = document.getElementById('detailImages');
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const lightboxThumbs = document.getElementById('lightboxThumbs');
+  const lightboxCounter = document.getElementById('lightboxCounter');
 
+  // Load posts
   async function loadPosts() {
     const { data, error } = await sb.from('posts').select('*').order('created_at', { ascending: false });
     if (error) { console.error(error); return; }
@@ -209,10 +206,10 @@
     renderGrid();
   }
 
+  // Modal
   document.getElementById('openModal').onclick = () => { resetModal(); modal.classList.add('open'); };
   document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
   document.getElementById('fileDrop').onclick = () => fileInput.click();
-
   const drop = document.getElementById('fileDrop');
   drop.ondragover = e => e.preventDefault();
   drop.ondrop = e => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
@@ -224,14 +221,12 @@
     cropStatus.textContent = ''; cropBtn.style.display = 'none';
     let loaded = 0;
     const total = files.length;
-    const fileArr = Array.from(files);
     const dataUrls = new Array(total);
-    fileArr.forEach((f, i) => {
+    Array.from(files).forEach((f, i) => {
       const reader = new FileReader();
       reader.onload = e => {
         dataUrls[i] = { url: e.target.result, file: f };
-        loaded++;
-        if (loaded === total) {
+        if (++loaded === total) {
           dataUrls.forEach((d, idx) => { pendingFiles.push(d); renderPreviewThumb(d.url, idx); });
           cropBtn.style.display = 'inline-block';
         }
@@ -252,6 +247,7 @@
     wrap.appendChild(img); wrap.appendChild(star); previewThumbs.appendChild(wrap);
   }
 
+  // Crop
   cropBtn.onclick = () => {
     if (!pendingFiles.length) return;
     cropImg.src = pendingFiles[selectedThumbIdx].url;
@@ -259,49 +255,34 @@
     cropModal.classList.add('open');
   };
   document.getElementById('cropCancelBtn').onclick = () => cropModal.classList.remove('open');
-
   cropContainer.addEventListener('mousedown', e => {
     const r = cropImg.getBoundingClientRect();
-    cropStart = { x: e.clientX - r.left, y: e.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSelection(); e.preventDefault();
+    cropStart = { x: e.clientX - r.left, y: e.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSel(); e.preventDefault();
   });
   window.addEventListener('mousemove', e => {
     if (!isDragging) return;
     const r = cropImg.getBoundingClientRect();
     cropEnd = { x: Math.max(0, Math.min(e.clientX - r.left, cropImg.offsetWidth)), y: Math.max(0, Math.min(e.clientY - r.top, cropImg.offsetHeight)) };
-    updateCropSelection();
+    updateCropSel();
   });
   window.addEventListener('mouseup', () => { isDragging = false; });
-  cropContainer.addEventListener('touchstart', e => {
-    const t = e.touches[0], r = cropImg.getBoundingClientRect();
-    cropStart = { x: t.clientX - r.left, y: t.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSelection(); e.preventDefault();
-  }, { passive: false });
-  window.addEventListener('touchmove', e => {
-    if (!isDragging) return;
-    const t = e.touches[0], r = cropImg.getBoundingClientRect();
-    cropEnd = { x: Math.max(0, Math.min(t.clientX - r.left, cropImg.offsetWidth)), y: Math.max(0, Math.min(t.clientY - r.top, cropImg.offsetHeight)) };
-    updateCropSelection();
-  }, { passive: false });
-  window.addEventListener('touchend', () => { isDragging = false; });
-
-  function updateCropSelection() {
+  function updateCropSel() {
     if (!cropStart || !cropEnd) return;
     const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y);
     const w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
     cropSelection.style.display = w > 2 && h > 2 ? 'block' : 'none';
     Object.assign(cropSelection.style, { left: x+'px', top: y+'px', width: w+'px', height: h+'px' });
   }
-
   document.getElementById('cropApplyBtn').onclick = () => {
     if (!cropStart || !cropEnd) { cropModal.classList.remove('open'); return; }
     const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y);
     const w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
     if (w < 4 || h < 4) { cropModal.classList.remove('open'); return; }
-    const scaleX = cropImg.naturalWidth / cropImg.offsetWidth, scaleY = cropImg.naturalHeight / cropImg.offsetHeight;
-    cropCanvas.width = w * scaleX; cropCanvas.height = h * scaleY;
-    const ctx = cropCanvas.getContext('2d');
+    const sx = cropImg.naturalWidth / cropImg.offsetWidth, sy = cropImg.naturalHeight / cropImg.offsetHeight;
+    cropCanvas.width = w * sx; cropCanvas.height = h * sy;
     const src = new Image();
     src.onload = () => {
-      ctx.drawImage(src, x*scaleX, y*scaleY, w*scaleX, h*scaleY, 0, 0, cropCanvas.width, cropCanvas.height);
+      cropCanvas.getContext('2d').drawImage(src, x*sx, y*sy, w*sx, h*sy, 0, 0, cropCanvas.width, cropCanvas.height);
       croppedThumb = cropCanvas.toDataURL('image/jpeg', 0.92);
       const thumbImgs = document.querySelectorAll('.preview-thumbs .pt img');
       if (thumbImgs[selectedThumbIdx]) thumbImgs[selectedThumbIdx].src = croppedThumb;
@@ -310,6 +291,7 @@
     src.src = pendingFiles[selectedThumbIdx].url;
   };
 
+  // Save post
   document.getElementById('savePost').onclick = async () => {
     if (!pendingFiles.length) return alert('사진을 선택해주세요.');
     uploadingMsg.style.display = 'block';
@@ -323,28 +305,21 @@
         const path = `${postId}/${i}.${ext}`;
         const { error } = await sb.storage.from('gallery').upload(path, f);
         if (error) throw error;
-        const { data } = sb.storage.from('gallery').getPublicUrl(path);
-        imageUrls.push(data.publicUrl);
+        imageUrls.push(sb.storage.from('gallery').getPublicUrl(path).data.publicUrl);
       }
       let thumbUrl = imageUrls[selectedThumbIdx];
       if (croppedThumb) {
         const blob = await (await fetch(croppedThumb)).blob();
-        const thumbPath = `${postId}/thumb.jpg`;
-        const { error } = await sb.storage.from('gallery').upload(thumbPath, blob);
+        const { error } = await sb.storage.from('gallery').upload(`${postId}/thumb.jpg`, blob);
         if (error) throw error;
-        const { data } = sb.storage.from('gallery').getPublicUrl(thumbPath);
-        thumbUrl = data.publicUrl;
+        thumbUrl = sb.storage.from('gallery').getPublicUrl(`${postId}/thumb.jpg`).data.publicUrl;
       }
       const { error: dbErr } = await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
       if (dbErr) throw dbErr;
       modal.classList.remove('open');
       await loadPosts();
-    } catch (e) {
-      alert('오류가 발생했어요: ' + e.message);
-    } finally {
-      uploadingMsg.style.display = 'none';
-      document.getElementById('savePost').disabled = false;
-    }
+    } catch (e) { alert('오류: ' + e.message); }
+    finally { uploadingMsg.style.display = 'none'; document.getElementById('savePost').disabled = false; }
   };
 
   function resetModal() {
@@ -353,11 +328,12 @@
     cropStatus.textContent = ''; cropBtn.style.display = 'none';
   }
 
+  // Delete
   document.getElementById('confirmCancelBtn').onclick = () => confirmModal.classList.remove('open');
   document.getElementById('confirmDeleteBtn').onclick = async () => {
     confirmModal.classList.remove('open');
     if (!deleteTargetId) return;
-    const post = posts.find(p => p.id === deleteTargetId);
+    const post = posts.find(p => String(p.id) === String(deleteTargetId));
     if (!post) return;
     const paths = post.images.map(url => url.split('/gallery/')[1]);
     if (post.thumb.includes('/thumb.jpg')) paths.push(`${post.id}/thumb.jpg`);
@@ -367,16 +343,13 @@
     await loadPosts();
   };
 
+  // Grid
   function renderGrid() {
     gridEl.innerHTML = '';
-    if (!posts.length) {
-      gridEl.innerHTML = '<p class="empty-msg">아직 게시글이 없어요.<br>+ 추가 버튼을 눌러 추가해보세요!</p>';
-      return;
-    }
+    if (!posts.length) { gridEl.innerHTML = '<p class="empty-msg">아직 게시글이 없어요.<br>+ 추가 버튼을 눌러 추가해보세요!</p>'; return; }
     posts.forEach(post => {
       const item = document.createElement('div'); item.className = 'grid-item';
-      const img = document.createElement('img'); img.src = post.thumb;
-      item.appendChild(img);
+      const img = document.createElement('img'); img.src = post.thumb; item.appendChild(img);
       if (post.images.length > 1) {
         const icon = document.createElement('span'); icon.className = 'multi-icon'; icon.textContent = '⧉'; item.appendChild(icon);
       }
@@ -388,110 +361,12 @@
     });
   }
 
-  // Lightbox zoom & pan
-  let scale = 1, panX = 0, panY = 0;
-  let isPanning = false, panStartX = 0, panStartY = 0;
-  let pinchDist = 0;
-
-  function applyTransform() {
-    lightboxImg.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`;
-  }
-
-  function resetZoom() { scale = 1; panX = 0; panY = 0; applyTransform(); }
-
-  // 마우스 휠 줌
-  lightboxImg.addEventListener('wheel', e => {
-    e.preventDefault();
-    scale = Math.min(5, Math.max(1, scale - e.deltaY * 0.002));
-    if (scale === 1) { panX = 0; panY = 0; }
-    applyTransform();
-  }, { passive: false });
-
-  // 마우스 드래그 패닝
-  lightboxImg.addEventListener('mousedown', e => {
-    if (scale === 1) return;
-    isPanning = true; panStartX = e.clientX - panX * scale; panStartY = e.clientY - panY * scale;
-    lightboxImg.classList.add('grabbing');
-  });
-  window.addEventListener('mousemove', e => {
-    if (!isPanning) return;
-    panX = (e.clientX - panStartX) / scale; panY = (e.clientY - panStartY) / scale;
-    applyTransform();
-  });
-  window.addEventListener('mouseup', () => { isPanning = false; lightboxImg.classList.remove('grabbing'); });
-
-  // 핀치 줌 (모바일)
-  lightboxImg.addEventListener('touchstart', e => {
-    if (e.touches.length === 2) {
-      pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    } else if (e.touches.length === 1 && scale > 1) {
-      isPanning = true; panStartX = e.touches[0].clientX - panX * scale; panStartY = e.touches[0].clientY - panY * scale;
-    }
-  }, { passive: true });
-  lightboxImg.addEventListener('touchmove', e => {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      scale = Math.min(5, Math.max(1, scale * (dist / pinchDist)));
-      pinchDist = dist;
-      if (scale === 1) { panX = 0; panY = 0; }
-      applyTransform();
-    } else if (e.touches.length === 1 && isPanning) {
-      panX = (e.touches[0].clientX - panStartX) / scale; panY = (e.touches[0].clientY - panStartY) / scale;
-      applyTransform();
-    }
-  }, { passive: false });
-  lightboxImg.addEventListener('touchend', () => { isPanning = false; });
-
-  // Lightbox
-  let lbImages = [], lbIdx = 0;
-  const lightbox = document.getElementById('lightbox');
-  const lightboxImg = document.getElementById('lightboxImg');
-  const lightboxThumbs = document.getElementById('lightboxThumbs');
-  const lightboxCounter = document.getElementById('lightboxCounter');
-
-  function openLightbox(images, idx) {
-    lbImages = images; lbIdx = idx;
-    lightboxThumbs.innerHTML = '';
-    images.forEach((src, i) => {
-      const th = document.createElement('img');
-      th.src = src;
-      th.onclick = () => goLightbox(i);
-      lightboxThumbs.appendChild(th);
-    });
-    updateLightbox();
-    lightbox.classList.add('open');
-  }
-
-  function updateLightbox() {
-    lightboxImg.src = lbImages[lbIdx];
-    lightboxCounter.textContent = `${lbIdx + 1} / ${lbImages.length}`;
-    lightboxThumbs.querySelectorAll('img').forEach((el, i) => el.classList.toggle('active', i === lbIdx));
-    resetZoom();
-  }
-
-  function goLightbox(idx) {
-    lbIdx = (idx + lbImages.length) % lbImages.length;
-    updateLightbox();
-  }
-
-  document.getElementById('lightboxClose').onclick = () => lightbox.classList.remove('open');
-  document.getElementById('lightboxPrev').onclick = () => goLightbox(lbIdx - 1);
-  document.getElementById('lightboxNext').onclick = () => goLightbox(lbIdx + 1);
-  lightbox.addEventListener('click', e => { if (e.target === lightbox) lightbox.classList.remove('open'); });
-  document.addEventListener('keydown', e => {
-    if (!lightbox.classList.contains('open')) return;
-    if (e.key === 'ArrowLeft') goLightbox(lbIdx - 1);
-    if (e.key === 'ArrowRight') goLightbox(lbIdx + 1);
-    if (e.key === 'Escape') lightbox.classList.remove('open');
-  });
-
+  // Detail
   function openDetail(post) {
     currentPost = post;
     detailImages.innerHTML = '';
     post.images.forEach((src, i) => {
-      const img = document.createElement('img');
-      img.src = src;
+      const img = document.createElement('img'); img.src = src;
       img.onclick = () => openLightbox(post.images, i);
       detailImages.appendChild(img);
     });
@@ -510,6 +385,80 @@
     document.getElementById('openModal').style.display = 'block';
     navTitle.textContent = 'GALLERY';
   };
+
+  // Lightbox
+  function openLightbox(images, idx) {
+    lbImages = images; lbIdx = idx;
+    lightboxThumbs.innerHTML = '';
+    images.forEach((src, i) => {
+      const th = document.createElement('img'); th.src = src;
+      th.onclick = () => goLightbox(i);
+      lightboxThumbs.appendChild(th);
+    });
+    updateLightbox();
+    lightbox.classList.add('open');
+  }
+
+  function updateLightbox() {
+    lightboxImg.src = lbImages[lbIdx];
+    lightboxCounter.textContent = `${lbIdx + 1} / ${lbImages.length}`;
+    lightboxThumbs.querySelectorAll('img').forEach((el, i) => el.classList.toggle('active', i === lbIdx));
+    resetZoom();
+  }
+
+  function goLightbox(idx) { lbIdx = (idx + lbImages.length) % lbImages.length; updateLightbox(); }
+
+  document.getElementById('lightboxClose').onclick = () => lightbox.classList.remove('open');
+  document.getElementById('lightboxPrev').onclick = () => goLightbox(lbIdx - 1);
+  document.getElementById('lightboxNext').onclick = () => goLightbox(lbIdx + 1);
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) lightbox.classList.remove('open'); });
+  document.addEventListener('keydown', e => {
+    if (!lightbox.classList.contains('open')) return;
+    if (e.key === 'ArrowLeft') goLightbox(lbIdx - 1);
+    if (e.key === 'ArrowRight') goLightbox(lbIdx + 1);
+    if (e.key === 'Escape') lightbox.classList.remove('open');
+  });
+
+  // Zoom & Pan
+  function resetZoom() { scale = 1; panX = 0; panY = 0; applyTransform(); }
+  function applyTransform() { lightboxImg.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`; }
+
+  lightboxImg.addEventListener('wheel', e => {
+    e.preventDefault();
+    scale = Math.min(5, Math.max(1, scale - e.deltaY * 0.002));
+    if (scale === 1) { panX = 0; panY = 0; }
+    applyTransform();
+  }, { passive: false });
+
+  lightboxImg.addEventListener('mousedown', e => {
+    if (scale === 1) return;
+    isPanning = true; panStartX = e.clientX - panX * scale; panStartY = e.clientY - panY * scale;
+    lightboxImg.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    panX = (e.clientX - panStartX) / scale; panY = (e.clientY - panStartY) / scale; applyTransform();
+  });
+  window.addEventListener('mouseup', () => { isPanning = false; lightboxImg.classList.remove('grabbing'); });
+
+  lightboxImg.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    } else if (e.touches.length === 1 && scale > 1) {
+      isPanning = true; panStartX = e.touches[0].clientX - panX * scale; panStartY = e.touches[0].clientY - panY * scale;
+    }
+  }, { passive: true });
+  lightboxImg.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      scale = Math.min(5, Math.max(1, scale * (d / pinchDist))); pinchDist = d;
+      if (scale === 1) { panX = 0; panY = 0; } applyTransform();
+    } else if (e.touches.length === 1 && isPanning) {
+      panX = (e.touches[0].clientX - panStartX) / scale; panY = (e.touches[0].clientY - panStartY) / scale; applyTransform();
+    }
+  }, { passive: false });
+  lightboxImg.addEventListener('touchend', () => { isPanning = false; });
 
   loadPosts();
 </script>
