@@ -37,7 +37,8 @@
   .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 500; flex-direction: column; justify-content: center; align-items: center; }
   .lightbox.open { display: flex; }
   .lightbox-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 16px; }
-  .lightbox-img-wrap img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 4px; }
+  .lightbox-img-wrap img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 4px; transition: transform 0.1s; transform-origin: center center; cursor: grab; }
+  .lightbox-img-wrap img.grabbing { cursor: grabbing; }
   .lightbox-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; z-index: 10; }
   .lightbox-counter { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 0.9rem; font-weight: 600; }
   .lightbox-arrow { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 2rem; width: 48px; height: 48px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
@@ -387,6 +388,61 @@
     });
   }
 
+  // Lightbox zoom & pan
+  let scale = 1, panX = 0, panY = 0;
+  let isPanning = false, panStartX = 0, panStartY = 0;
+  let pinchDist = 0;
+
+  function applyTransform() {
+    lightboxImg.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`;
+  }
+
+  function resetZoom() { scale = 1; panX = 0; panY = 0; applyTransform(); }
+
+  // 마우스 휠 줌
+  lightboxImg.addEventListener('wheel', e => {
+    e.preventDefault();
+    scale = Math.min(5, Math.max(1, scale - e.deltaY * 0.002));
+    if (scale === 1) { panX = 0; panY = 0; }
+    applyTransform();
+  }, { passive: false });
+
+  // 마우스 드래그 패닝
+  lightboxImg.addEventListener('mousedown', e => {
+    if (scale === 1) return;
+    isPanning = true; panStartX = e.clientX - panX * scale; panStartY = e.clientY - panY * scale;
+    lightboxImg.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    panX = (e.clientX - panStartX) / scale; panY = (e.clientY - panStartY) / scale;
+    applyTransform();
+  });
+  window.addEventListener('mouseup', () => { isPanning = false; lightboxImg.classList.remove('grabbing'); });
+
+  // 핀치 줌 (모바일)
+  lightboxImg.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    } else if (e.touches.length === 1 && scale > 1) {
+      isPanning = true; panStartX = e.touches[0].clientX - panX * scale; panStartY = e.touches[0].clientY - panY * scale;
+    }
+  }, { passive: true });
+  lightboxImg.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      scale = Math.min(5, Math.max(1, scale * (dist / pinchDist)));
+      pinchDist = dist;
+      if (scale === 1) { panX = 0; panY = 0; }
+      applyTransform();
+    } else if (e.touches.length === 1 && isPanning) {
+      panX = (e.touches[0].clientX - panStartX) / scale; panY = (e.touches[0].clientY - panStartY) / scale;
+      applyTransform();
+    }
+  }, { passive: false });
+  lightboxImg.addEventListener('touchend', () => { isPanning = false; });
+
   // Lightbox
   let lbImages = [], lbIdx = 0;
   const lightbox = document.getElementById('lightbox');
@@ -411,6 +467,7 @@
     lightboxImg.src = lbImages[lbIdx];
     lightboxCounter.textContent = `${lbIdx + 1} / ${lbImages.length}`;
     lightboxThumbs.querySelectorAll('img').forEach((el, i) => el.classList.toggle('active', i === lbIdx));
+    resetZoom();
   }
 
   function goLightbox(idx) {
