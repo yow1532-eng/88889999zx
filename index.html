@@ -62,7 +62,7 @@
   .pg-item:hover .pg-btns { opacity: 1; }
   .pg-btn { font-size: 0.62rem; background: #fff; border: none; border-radius: 3px; padding: 2px 5px; cursor: pointer; white-space: nowrap; }
   .pg-btn.thumb-btn { background: #111; color: #fff; }
-  .pg-btn.grid-crop-btn { background: #ffeb3b; color: #111; font-weight: bold; } /* 썸네일 크롭 버튼 */
+  .pg-btn.grid-crop-btn { background: #ffeb3b; color: #111; font-weight: bold; }
   .pg-item .thumb-label { position: absolute; top: 2px; left: 2px; font-size: 0.6rem; background: #111; color: #fff; border-radius: 2px; padding: 1px 4px; z-index: 5; }
 
   .hint { font-size: 0.78rem; color: #aaa; margin-bottom: 10px; }
@@ -170,9 +170,9 @@
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let posts = [], selectedThumbIdx = 0, deleteTargetId = null;
-  let pendingFiles = []; // { originalUrl, croppedUrl, file }
-  let croppedThumbBlob = null; // 그리드용 별도 썸네일 크롭 결과
-  let cropTargetIdx = null, cropMode = 'image'; // 'image' 또는 'gridThumb'
+  let pendingFiles = []; 
+  let croppedThumbBlob = null; 
+  let cropTargetIdx = null, cropMode = 'image'; 
   let cropStart = null, cropEnd = null, isDragging = false;
   let lbImages = [], lbIdx = 0;
   let scale = 1, panX = 0, panY = 0, isPanning = false, panStartX = 0, panStartY = 0, pinchDist = 0;
@@ -212,49 +212,50 @@
   fileInput.onchange = () => handleFiles(fileInput.files);
 
   function handleFiles(files) {
-    pendingFiles = []; previewGrid.innerHTML = ''; selectedThumbIdx = 0; croppedThumbBlob = null;
     let loaded = 0;
     const total = files.length;
-    const arr = new Array(total);
-    Array.from(files).forEach((f, i) => {
+    const wasEmpty = pendingFiles.length === 0;
+
+    Array.from(files).forEach((f) => {
       const reader = new FileReader();
       reader.onload = e => {
-        arr[i] = { originalUrl: e.target.result, croppedUrl: null, file: f };
-        if (++loaded === total) {
-          arr.forEach((d, idx) => { pendingFiles.push(d); renderPreviewItem(idx); });
-        }
+        const newIdx = pendingFiles.length;
+        const newFileObj = { originalUrl: e.target.result, croppedUrl: null, file: f };
+        pendingFiles.push(newFileObj);
+        renderPreviewItem(newIdx);
+
+        if (wasEmpty && newIdx === 0) setThumb(0);
+
+        loaded++;
+        if (loaded === total) fileInput.value = '';
       };
       reader.readAsDataURL(f);
     });
   }
 
   function renderPreviewItem(i) {
+    if (document.getElementById(`pg-${i}`)) return;
+
     const wrap = document.createElement('div'); wrap.className = 'pg-item'; wrap.id = `pg-${i}`;
     const img = document.createElement('img');
     img.src = pendingFiles[i].croppedUrl || pendingFiles[i].originalUrl;
     if (i === selectedThumbIdx) img.classList.add('is-thumb');
 
     const btns = document.createElement('div'); btns.className = 'pg-btns';
-    
-    // 1. 개별 사진 크롭 버튼
     const cropBtnEl = document.createElement('button'); cropBtnEl.className = 'pg-btn'; cropBtnEl.textContent = '✂️ 사진크롭';
     cropBtnEl.onclick = e => { e.stopPropagation(); openCrop(i, 'image'); };
-    
-    // 2. 대표 사진 설정 버튼
     const thumbBtnEl = document.createElement('button'); thumbBtnEl.className = 'pg-btn thumb-btn'; thumbBtnEl.textContent = '★ 대표';
     thumbBtnEl.onclick = e => { e.stopPropagation(); setThumb(i); };
 
     btns.appendChild(cropBtnEl);
     btns.appendChild(thumbBtnEl);
 
-    // 3. 썸네일 전용 크롭 버튼 (대표로 선택된 이미지에만 표시)
     if (i === selectedThumbIdx) {
       const gridCropBtn = document.createElement('button');
       gridCropBtn.className = 'pg-btn grid-crop-btn';
       gridCropBtn.textContent = '🟡 그리드크롭';
       gridCropBtn.onclick = e => { e.stopPropagation(); openCrop(i, 'gridThumb'); };
       btns.appendChild(gridCropBtn);
-
       const lbl = document.createElement('span'); lbl.className = 'thumb-label'; lbl.textContent = '대표'; wrap.appendChild(lbl);
     }
 
@@ -263,16 +264,12 @@
   }
 
   function setThumb(i) {
-    const prev = selectedThumbIdx;
     selectedThumbIdx = i;
-    croppedThumbBlob = null; // 대표 사진이 바뀌면 기존 썸네일 크롭 초기화
-    
-    // UI 갱신
+    croppedThumbBlob = null; 
     previewGrid.innerHTML = '';
     pendingFiles.forEach((_, idx) => renderPreviewItem(idx));
   }
 
-  // Crop
   function openCrop(i, mode) {
     cropTargetIdx = i;
     cropMode = mode;
@@ -287,7 +284,6 @@
     if (cropTargetIdx === null) return;
     if (cropMode === 'image') {
       pendingFiles[cropTargetIdx].croppedUrl = null;
-      // UI 갱신
       previewGrid.innerHTML = '';
       pendingFiles.forEach((_, idx) => renderPreviewItem(idx));
     } else {
@@ -296,7 +292,6 @@
     cropModal.classList.remove('open');
   };
 
-  // 마우스/터치 이벤트 (Claude 코드 유지)
   cropContainer.addEventListener('mousedown', e => {
     const r = cropImg.getBoundingClientRect();
     cropStart = { x: e.clientX - r.left, y: e.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSel(); e.preventDefault();
@@ -330,78 +325,50 @@
 
   document.getElementById('cropApplyBtn').onclick = () => {
     if (!cropStart || !cropEnd || cropTargetIdx === null) { cropModal.classList.remove('open'); return; }
-    const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y);
-    const w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
+    const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y), w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
     if (w < 4 || h < 4) { cropModal.classList.remove('open'); return; }
-    
     const sx = cropImg.naturalWidth / cropImg.offsetWidth, sy = cropImg.naturalHeight / cropImg.offsetHeight;
     cropCanvas.width = w * sx; cropCanvas.height = h * sy;
-    
     const src = new Image();
     src.onload = () => {
       cropCanvas.getContext('2d').drawImage(src, x*sx, y*sy, w*sx, h*sy, 0, 0, cropCanvas.width, cropCanvas.height);
       const resultData = cropCanvas.toDataURL('image/jpeg', 0.92);
-      
       if (cropMode === 'image') {
         pendingFiles[cropTargetIdx].croppedUrl = resultData;
-        // UI 갱신
-        previewGrid.innerHTML = '';
-        pendingFiles.forEach((_, idx) => renderPreviewItem(idx));
+        previewGrid.innerHTML = ''; pendingFiles.forEach((_, idx) => renderPreviewItem(idx));
       } else {
-        // 썸네일 전용 크롭인 경우 blob으로 저장
-        fetch(resultData).then(res => res.blob()).then(blob => {
-          croppedThumbBlob = blob;
-          alert('그리드용 썸네일 크롭이 완료되었습니다!');
-        });
+        fetch(resultData).then(res => res.blob()).then(blob => { croppedThumbBlob = blob; alert('썸네일 크롭 완료!'); });
       }
       cropModal.classList.remove('open');
     };
     src.src = cropImg.src;
   };
 
-  // Save
   document.getElementById('savePost').onclick = async () => {
     if (!pendingFiles.length) return alert('사진을 선택해주세요.');
-    uploadingMsg.style.display = 'block';
-    document.getElementById('savePost').disabled = true;
-    
+    uploadingMsg.style.display = 'block'; document.getElementById('savePost').disabled = true;
     try {
       const postId = Date.now().toString();
       const imageUrls = [];
-      
-      // 1. 모든 이미지 업로드 (크롭된 이미지가 있으면 그것을, 없으면 원본을 업로드)
       for (let i = 0; i < pendingFiles.length; i++) {
         const pf = pendingFiles[i];
-        let blob;
-        if (pf.croppedUrl) {
-          blob = await (await fetch(pf.croppedUrl)).blob();
-        } else {
-          blob = pf.file;
-        }
+        let blob = pf.croppedUrl ? await (await fetch(pf.croppedUrl)).blob() : pf.file;
         const ext = pf.file.name.split('.').pop();
         const path = `${postId}/${i}.${ext}`;
         const { error } = await sb.storage.from('gallery').upload(path, blob);
         if (error) throw error;
         imageUrls.push(sb.storage.from('gallery').getPublicUrl(path).data.publicUrl);
       }
-      
-      // 2. 썸네일 URL 결정
       let thumbUrl = imageUrls[selectedThumbIdx];
-      
-      // 만약 '그리드용 썸네일 크롭'을 별도로 했다면 thumb.jpg로 따로 업로드
       if (croppedThumbBlob) {
         const thumbPath = `${postId}/thumb.jpg`;
         const { error: tErr } = await sb.storage.from('gallery').upload(thumbPath, croppedThumbBlob);
         if (tErr) throw tErr;
         thumbUrl = sb.storage.from('gallery').getPublicUrl(thumbPath).data.publicUrl;
       }
-      
-      // 3. DB 저장
       const { error: dbErr } = await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
       if (dbErr) throw dbErr;
-      
-      modal.classList.remove('open');
-      await loadPosts();
+      modal.classList.remove('open'); await loadPosts();
     } catch (e) { alert('오류: ' + e.message); }
     finally { uploadingMsg.style.display = 'none'; document.getElementById('savePost').disabled = false; }
   };
@@ -410,27 +377,21 @@
     pendingFiles = []; selectedThumbIdx = 0; croppedThumbBlob = null; previewGrid.innerHTML = ''; fileInput.value = '';
   }
 
-  // Delete (Claude 코드 유지)
   document.getElementById('confirmCancelBtn').onclick = () => confirmModal.classList.remove('open');
   document.getElementById('confirmDeleteBtn').onclick = async () => {
     confirmModal.classList.remove('open');
     if (!deleteTargetId) return;
     const post = posts.find(p => String(p.id) === String(deleteTargetId));
     if (!post) return;
-    
-    // storage 파일 리스트 가져오기
     const { data: files } = await sb.storage.from('gallery').list(post.id);
     if (files && files.length) {
       const paths = files.map(f => `${post.id}/${f.name}`);
       await sb.storage.from('gallery').remove(paths);
     }
-    
     await sb.from('posts').delete().eq('id', deleteTargetId);
-    deleteTargetId = null;
-    await loadPosts();
+    deleteTargetId = null; await loadPosts();
   };
 
-  // 그리드/상세/라이트박스 로직은 기존과 동일...
   function renderGrid() {
     gridEl.innerHTML = '';
     if (!posts.length) { gridEl.innerHTML = '<p class="empty-msg">아직 게시글이 없어요.<br>+ 추가 버튼을 눌러 추가해보세요!</p>'; return; }
@@ -459,8 +420,7 @@
     document.getElementById('detailPage').classList.add('active');
     backBtn.style.display = 'block';
     document.getElementById('openModal').style.display = 'none';
-    navTitle.textContent = '';
-    window.scrollTo(0, 0);
+    navTitle.textContent = ''; window.scrollTo(0, 0);
   }
 
   backBtn.onclick = () => {
@@ -479,8 +439,7 @@
       th.onclick = () => goLightbox(i);
       lightboxThumbs.appendChild(th);
     });
-    updateLightbox();
-    lightbox.classList.add('open');
+    updateLightbox(); lightbox.classList.add('open');
   }
 
   function updateLightbox() {
@@ -496,7 +455,7 @@
   document.getElementById('lightboxPrev').onclick = () => goLightbox(lbIdx - 1);
   document.getElementById('lightboxNext').onclick = () => goLightbox(lbIdx + 1);
   lightbox.addEventListener('click', e => { if (e.target === lightbox) lightbox.classList.remove('open'); });
-  
+
   function resetZoom() { scale = 1; panX = 0; panY = 0; applyTransform(); }
   function applyTransform() { lightboxImg.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`; }
 
