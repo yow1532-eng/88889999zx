@@ -57,8 +57,13 @@
   /* 사진 미리보기 그리드 */
   .preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; min-height: 40px; }
   .pg-item { position: relative; width: 80px; height: 80px; cursor: grab; }
-  .pg-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 2px solid transparent; display: block; }
-  .pg-item img.is-thumb { border: 2px solid #111; }
+  .pg-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 2px solid transparent; display: block; transition: border 0.2s; }
+  
+  /* 포커스(수정 대상) 테두리: 파란색 */
+  .pg-item.is-editing img { border: 2.5px solid #007bff !important; }
+  /* 대표 이미지 테두리: 검은색 (수정 중이 아닐 때) */
+  .pg-item img.is-thumb { border: 2.5px solid #111; }
+  
   .pg-item .pg-btns { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(0,0,0,0.4); border-radius: 4px; opacity: 0; transition: opacity 0.15s; }
   .pg-item:hover .pg-btns { opacity: 1; }
   .pg-btn { font-size: 0.65rem; background: #fff; border: none; border-radius: 3px; padding: 3px 6px; cursor: pointer; white-space: nowrap; font-weight: 500; }
@@ -68,7 +73,6 @@
 
   .hint { font-size: 0.78rem; color: #aaa; margin-bottom: 12px; line-height: 1.4; }
   
-  /* 하단 액션바 수정 */
   .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
   .modal-actions .left-group { display: flex; gap: 6px; flex: 1; }
   .modal-actions .right-group { display: flex; gap: 8px; }
@@ -139,7 +143,7 @@
       <input type="file" id="fileInput" accept="image/*" multiple>
       <p>클릭하거나 사진을 드래그하세요</p>
     </div>
-    <p class="hint">순서를 바꾸려면 드래그하세요. 대표 사진을 지정하면 하단의 크롭 버튼이 활성화됩니다.</p>
+    <p class="hint">수정할 사진을 <strong>클릭(파란 테두리)</strong>한 뒤 하단 크롭 버튼을 누르세요. 별표(★)는 메인 썸네일입니다.</p>
     <div class="preview-grid" id="previewGrid"></div>
     
     <div class="uploading" id="uploadingMsg" style="display:none;">업로드 중...</div>
@@ -188,7 +192,7 @@
   const { createClient } = supabase;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  let posts = [], selectedThumbIdx = 0, deleteTargetId = null;
+  let posts = [], selectedThumbIdx = 0, editingIdx = 0, deleteTargetId = null;
   let pendingFiles = []; 
   let croppedThumbBlob = null; 
   let cropTargetIdx = null, cropMode = 'image'; 
@@ -222,25 +226,31 @@
     onEnd: function (evt) {
       const item = pendingFiles.splice(evt.oldIndex, 1)[0];
       pendingFiles.splice(evt.newIndex, 0, item);
-      if (selectedThumbIdx === evt.oldIndex) {
-        selectedThumbIdx = evt.newIndex;
-      } else if (selectedThumbIdx > evt.oldIndex && selectedThumbIdx <= evt.newIndex) {
-        selectedThumbIdx--;
-      } else if (selectedThumbIdx < evt.oldIndex && selectedThumbIdx >= evt.newIndex) {
-        selectedThumbIdx++;
-      }
+      
+      // 인덱스 보정 로직
+      const fixIdx = (idx) => {
+        if (idx === evt.oldIndex) return evt.newIndex;
+        if (idx > evt.oldIndex && idx <= evt.newIndex) return idx - 1;
+        if (idx < evt.oldIndex && idx >= evt.newIndex) return idx + 1;
+        return idx;
+      };
+      selectedThumbIdx = fixIdx(selectedThumbIdx);
+      editingIdx = fixIdx(editingIdx);
+      
       refreshPreviewGrid();
     }
   });
 
-  // 하단 크롭 버튼 이벤트 바인딩
+  // 하단 크롭 버튼 이벤트 (현재 editingIdx 대상을 크롭)
   document.getElementById('bottomImageCropBtn').onclick = () => {
     if (pendingFiles.length === 0) return alert('먼저 사진을 추가해주세요.');
-    openCrop(selectedThumbIdx, 'image');
+    openCrop(editingIdx, 'image');
   };
   document.getElementById('bottomThumbCropBtn').onclick = () => {
     if (pendingFiles.length === 0) return alert('먼저 사진을 추가해주세요.');
-    openCrop(selectedThumbIdx, 'gridThumb');
+    // 썸네일 크롭은 무조건 이 사진을 '대표'로도 인식하게 설정
+    selectedThumbIdx = editingIdx;
+    openCrop(editingIdx, 'gridThumb');
   };
 
   async function loadPosts() {
@@ -270,7 +280,10 @@
         pendingFiles.push(newFileObj);
         loaded++;
         if (loaded === total) {
-          if (wasEmpty) selectedThumbIdx = 0;
+          if (wasEmpty) {
+            selectedThumbIdx = 0;
+            editingIdx = 0;
+          }
           fileInput.value = '';
           refreshPreviewGrid();
         }
@@ -283,26 +296,48 @@
     previewGrid.innerHTML = '';
     pendingFiles.forEach((_, i) => renderPreviewItem(i));
     
-    // 버튼 상태 업데이트
     const hasFiles = pendingFiles.length > 0;
     document.getElementById('bottomImageCropBtn').style.opacity = hasFiles ? '1' : '0.5';
     document.getElementById('bottomThumbCropBtn').style.opacity = hasFiles ? '1' : '0.5';
   }
 
   function renderPreviewItem(i) {
-    const wrap = document.createElement('div'); wrap.className = 'pg-item'; wrap.id = `pg-${i}`;
+    const wrap = document.createElement('div'); 
+    wrap.className = 'pg-item'; 
+    if (i === editingIdx) wrap.classList.add('is-editing');
+    wrap.id = `pg-${i}`;
+
     const img = document.createElement('img');
     img.src = pendingFiles[i].croppedUrl || pendingFiles[i].originalUrl;
     if (i === selectedThumbIdx) img.classList.add('is-thumb');
 
+    // 이미지 클릭 시 수정 대상으로 선택
+    wrap.onclick = () => {
+      editingIdx = i;
+      refreshPreviewGrid();
+    };
+
     const btns = document.createElement('div'); btns.className = 'pg-btns';
     
-    // 개별 사진에서의 크롭 버튼은 제거하고 대표설정/삭제만 유지
+    // 대표 설정
     const thumbBtnEl = document.createElement('button'); thumbBtnEl.className = 'pg-btn thumb-btn'; thumbBtnEl.textContent = '★ 대표';
-    thumbBtnEl.onclick = e => { e.stopPropagation(); setThumb(i); };
+    thumbBtnEl.onclick = e => { 
+      e.stopPropagation(); 
+      selectedThumbIdx = i;
+      editingIdx = i; // 대표로 지정하면 수정 타겟도 같이 이동
+      croppedThumbBlob = null; 
+      refreshPreviewGrid();
+    };
 
+    // 개별 삭제
     const delBtnEl = document.createElement('button'); delBtnEl.className = 'pg-btn del-btn'; delBtnEl.textContent = '✖ 삭제';
-    delBtnEl.onclick = e => { e.stopPropagation(); removePendingFile(i); };
+    delBtnEl.onclick = e => { 
+      e.stopPropagation(); 
+      pendingFiles.splice(i, 1);
+      if (selectedThumbIdx >= pendingFiles.length) selectedThumbIdx = 0;
+      if (editingIdx >= pendingFiles.length) editingIdx = 0;
+      refreshPreviewGrid();
+    };
 
     btns.appendChild(thumbBtnEl);
     btns.appendChild(delBtnEl);
@@ -313,19 +348,6 @@
 
     wrap.appendChild(img); wrap.appendChild(btns);
     previewGrid.appendChild(wrap);
-  }
-
-  function removePendingFile(i) {
-    pendingFiles.splice(i, 1);
-    if (selectedThumbIdx === i) selectedThumbIdx = 0;
-    else if (selectedThumbIdx > i) selectedThumbIdx--;
-    refreshPreviewGrid();
-  }
-
-  function setThumb(i) {
-    selectedThumbIdx = i;
-    croppedThumbBlob = null; 
-    refreshPreviewGrid();
   }
 
   function openCrop(i, mode) {
@@ -341,16 +363,13 @@
   document.getElementById('cropCancelBtn').onclick = () => cropModal.classList.remove('open');
   document.getElementById('cropResetBtn').onclick = () => {
     if (cropTargetIdx === null) return;
-    if (cropMode === 'image') {
-      pendingFiles[cropTargetIdx].croppedUrl = null;
-    } else {
-      croppedThumbBlob = null;
-    }
+    if (cropMode === 'image') pendingFiles[cropTargetIdx].croppedUrl = null;
+    else croppedThumbBlob = null;
     refreshPreviewGrid();
     cropModal.classList.remove('open');
   };
 
-  // Crop Interaction
+  // Crop Logic (동일)
   cropContainer.addEventListener('mousedown', e => {
     const r = cropImg.getBoundingClientRect();
     cropStart = { x: e.clientX - r.left, y: e.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSel(); e.preventDefault();
@@ -365,8 +384,7 @@
 
   function updateCropSel() {
     if (!cropStart || !cropEnd) return;
-    const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y);
-    const w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
+    const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y), w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
     cropSelection.style.display = w > 2 && h > 2 ? 'block' : 'none';
     Object.assign(cropSelection.style, { left: x+'px', top: y+'px', width: w+'px', height: h+'px' });
   }
@@ -385,7 +403,7 @@
         pendingFiles[cropTargetIdx].croppedUrl = resultData;
         refreshPreviewGrid();
       } else {
-        fetch(resultData).then(res => res.blob()).then(blob => { croppedThumbBlob = blob; alert('썸네일 크롭이 설정되었습니다.'); });
+        fetch(resultData).then(res => res.blob()).then(blob => { croppedThumbBlob = blob; alert('썸네일 크롭 완료!'); });
       }
       cropModal.classList.remove('open');
     };
@@ -414,19 +432,17 @@
         if (tErr) throw tErr;
         thumbUrl = sb.storage.from('gallery').getPublicUrl(thumbPath).data.publicUrl;
       }
-      const { error: dbErr } = await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
-      if (dbErr) throw dbErr;
+      await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
       modal.classList.remove('open'); await loadPosts();
     } catch (e) { alert('오류: ' + e.message); }
     finally { uploadingMsg.style.display = 'none'; document.getElementById('savePost').disabled = false; }
   };
 
   function resetModal() {
-    pendingFiles = []; selectedThumbIdx = 0; croppedThumbBlob = null; previewGrid.innerHTML = ''; fileInput.value = '';
-    document.getElementById('bottomImageCropBtn').style.opacity = '0.5';
-    document.getElementById('bottomThumbCropBtn').style.opacity = '0.5';
+    pendingFiles = []; selectedThumbIdx = 0; editingIdx = 0; croppedThumbBlob = null; previewGrid.innerHTML = ''; fileInput.value = '';
   }
 
+  // 삭제/그리드/상세/라이트박스 로직 (기존과 동일)
   document.getElementById('confirmCancelBtn').onclick = () => confirmModal.classList.remove('open');
   document.getElementById('confirmDeleteBtn').onclick = async () => {
     confirmModal.classList.remove('open');
