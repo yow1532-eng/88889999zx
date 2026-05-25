@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gallery</title>
+<title>Gallery Pro (Optimized)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <style>
+  /* CSS는 기존과 동일합니다 */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; }
-
   nav { border-bottom: 1px solid #efefef; padding: 16px 0; text-align: center; position: sticky; top: 0; background: #fff; z-index: 100; }
   nav h1 { font-size: 1rem; font-weight: 600; letter-spacing: 1px; }
   nav .back-btn { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 2rem; cursor: pointer; color: #111; display: none; font-weight: 300; }
@@ -17,21 +17,21 @@
 
   .page { display: none; }
   .page.active { display: block; }
-
   .grid-wrap { max-width: 935px; margin: 0 auto; padding: 20px 12px; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
   .grid-item { aspect-ratio: 1; overflow: hidden; cursor: pointer; position: relative; background: #f5f5f5; }
   .grid-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
   .grid-item:hover img { transform: scale(1.03); }
   .multi-icon { position: absolute; top: 8px; right: 8px; color: #fff; font-size: 1rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-  .delete-btn { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; display: none; }
-  .grid-item:hover .delete-btn { display: block; }
+  
+  .grid-btns { position: absolute; bottom: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
+  .grid-item:hover .grid-btns { opacity: 1; }
+  .grid-btns button { background: rgba(0,0,0,0.7); color: #fff; border: none; border-radius: 4px; padding: 5px 8px; font-size: 0.72rem; cursor: pointer; }
 
   .detail-wrap { max-width: 700px; margin: 0 auto; padding: 16px 12px 40px; }
   .detail-images { display: flex; flex-direction: column; gap: 4px; }
   .detail-images img { width: 100%; height: auto; display: block; border-radius: 2px; cursor: zoom-in; }
 
-  /* LIGHTBOX */
   .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 500; flex-direction: column; justify-content: center; align-items: center; }
   .lightbox.open { display: flex; }
   .lightbox-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 16px; overflow: hidden; }
@@ -45,7 +45,6 @@
   .lightbox-thumbs img { width: 56px; height: 56px; object-fit: cover; border-radius: 4px; cursor: pointer; opacity: 0.5; flex-shrink: 0; border: 2px solid transparent; }
   .lightbox-thumbs img.active { opacity: 1; border-color: #fff; }
 
-  /* MODAL */
   .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; }
   .modal.open { display: flex; }
   .modal-box { background: #fff; border-radius: 10px; padding: 28px; width: 95%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
@@ -54,16 +53,11 @@
   .file-drop input { display: none; }
   .file-drop p { font-size: 0.85rem; color: #aaa; }
 
-  /* 사진 미리보기 그리드 */
   .preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; min-height: 40px; }
   .pg-item { position: relative; width: 80px; height: 80px; cursor: grab; }
-  .pg-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 2px solid transparent; display: block; transition: border 0.2s; }
-  
-  /* 포커스(수정 대상) 테두리: 파란색 */
+  .pg-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 2px solid transparent; display: block; }
   .pg-item.is-editing img { border: 2.5px solid #007bff !important; }
-  /* 대표 이미지 테두리: 검은색 (수정 중이 아닐 때) */
   .pg-item img.is-thumb { border: 2.5px solid #111; }
-  
   .pg-item .pg-btns { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(0,0,0,0.4); border-radius: 4px; opacity: 0; transition: opacity 0.15s; }
   .pg-item:hover .pg-btns { opacity: 1; }
   .pg-btn { font-size: 0.65rem; background: #fff; border: none; border-radius: 3px; padding: 3px 6px; cursor: pointer; white-space: nowrap; font-weight: 500; }
@@ -72,20 +66,16 @@
   .pg-item .thumb-label { position: absolute; top: 2px; left: 2px; font-size: 0.6rem; background: #111; color: #fff; border-radius: 2px; padding: 1px 4px; z-index: 5; }
 
   .hint { font-size: 0.78rem; color: #aaa; margin-bottom: 12px; line-height: 1.4; }
-  
   .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
   .modal-actions .left-group { display: flex; gap: 6px; flex: 1; }
   .modal-actions .right-group { display: flex; gap: 8px; }
   .modal-actions button { padding: 9px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.82rem; white-space: nowrap; }
-  
   .btn-image-crop { background: #f8f8f8; color: #111; border: 1px solid #ddd !important; }
   .btn-thumb-crop { background: #fff9c4; color: #111; border: 1px solid #fbc02d !important; font-weight: 600; }
   .btn-cancel { background: #f0f0f0; color: #555; }
   .btn-save { background: #111; color: #fff; font-weight: 600; min-width: 70px; }
-  
   .uploading { text-align: center; color: #888; font-size: 0.85rem; margin-top: 12px; }
 
-  /* CROP MODAL */
   .crop-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 600; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
   .crop-modal.open { display: flex; }
   .crop-title { color: #fff; font-size: 0.9rem; }
@@ -138,16 +128,14 @@
 
 <div class="modal" id="modal">
   <div class="modal-box">
-    <h2>새 게시글</h2>
+    <h2 id="modalTitle">새 게시글</h2>
     <div class="file-drop" id="fileDrop">
       <input type="file" id="fileInput" accept="image/*" multiple>
       <p>클릭하거나 사진을 드래그하세요</p>
     </div>
-    <p class="hint">수정할 사진을 <strong>클릭(파란 테두리)</strong>한 뒤 하단 크롭 버튼을 누르세요. 별표(★)는 메인 썸네일입니다.</p>
+    <p class="hint">이미지들은 업로드 전 최적화됩니다. 클릭(파란 테두리)하면 수정 대상이 됩니다.</p>
     <div class="preview-grid" id="previewGrid"></div>
-    
-    <div class="uploading" id="uploadingMsg" style="display:none;">업로드 중...</div>
-    
+    <div class="uploading" id="uploadingMsg" style="display:none;">처리 중...</div>
     <div class="modal-actions">
       <div class="left-group">
         <button class="btn-image-crop" id="bottomImageCropBtn">✂️ 사진크롭</button>
@@ -161,6 +149,7 @@
   </div>
 </div>
 
+<!-- 크롭/컨펌 모달 및 캔버스 (이전과 동일) -->
 <div class="crop-modal" id="cropModal">
   <p class="crop-title" id="cropTitle">영역을 선택하세요</p>
   <div class="crop-container" id="cropContainer">
@@ -192,13 +181,11 @@
   const { createClient } = supabase;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  let posts = [], selectedThumbIdx = 0, editingIdx = 0, deleteTargetId = null;
-  let pendingFiles = []; 
+  let posts = [], selectedThumbIdx = 0, editingIdx = 0, deleteTargetId = null, editingPostId = null;
+  let pendingFiles = []; // { originalUrl, croppedUrl, file, isExisting: bool }
   let croppedThumbBlob = null; 
-  let cropTargetIdx = null, cropMode = 'image'; 
-  let cropStart = null, cropEnd = null, isDragging = false;
-  let lbImages = [], lbIdx = 0;
-  let scale = 1, panX = 0, panY = 0, isPanning = false, panStartX = 0, panStartY = 0, pinchDist = 0;
+  let cropTargetIdx = null, cropMode = 'image', cropStart = null, cropEnd = null, isDragging = false;
+  let lbImages = [], lbIdx = 0, scale = 1, panX = 0, panY = 0, isPanning = false, panStartX = 0, panStartY = 0, pinchDist = 0;
 
   const gridEl = document.getElementById('grid');
   const modal = document.getElementById('modal');
@@ -219,15 +206,43 @@
   const lightboxThumbs = document.getElementById('lightboxThumbs');
   const lightboxCounter = document.getElementById('lightboxCounter');
 
-  // 드래그 앤 드롭 초기화
+  // --- [압축 로직 추가] ---
+  async function compressImage(dataUrl, maxWidth = 1200, quality = 0.8) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxWidth) {
+            width *= maxWidth / height;
+            height = maxWidth;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = dataUrl;
+    });
+  }
+  // -------------------------
+
   new Sortable(previewGrid, {
     animation: 150,
     ghostClass: 'sortable-ghost',
     onEnd: function (evt) {
       const item = pendingFiles.splice(evt.oldIndex, 1)[0];
       pendingFiles.splice(evt.newIndex, 0, item);
-      
-      // 인덱스 보정 로직
       const fixIdx = (idx) => {
         if (idx === evt.oldIndex) return evt.newIndex;
         if (idx > evt.oldIndex && idx <= evt.newIndex) return idx - 1;
@@ -236,19 +251,16 @@
       };
       selectedThumbIdx = fixIdx(selectedThumbIdx);
       editingIdx = fixIdx(editingIdx);
-      
       refreshPreviewGrid();
     }
   });
 
-  // 하단 크롭 버튼 이벤트 (현재 editingIdx 대상을 크롭)
   document.getElementById('bottomImageCropBtn').onclick = () => {
     if (pendingFiles.length === 0) return alert('먼저 사진을 추가해주세요.');
     openCrop(editingIdx, 'image');
   };
   document.getElementById('bottomThumbCropBtn').onclick = () => {
     if (pendingFiles.length === 0) return alert('먼저 사진을 추가해주세요.');
-    // 썸네일 크롭은 무조건 이 사진을 '대표'로도 인식하게 설정
     selectedThumbIdx = editingIdx;
     openCrop(editingIdx, 'gridThumb');
   };
@@ -260,7 +272,7 @@
     renderGrid();
   }
 
-  document.getElementById('openModal').onclick = () => { resetModal(); modal.classList.add('open'); };
+  document.getElementById('openModal').onclick = () => { editingPostId = null; resetModal(); modal.classList.add('open'); };
   document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
   document.getElementById('fileDrop').onclick = () => fileInput.click();
   const drop = document.getElementById('fileDrop');
@@ -268,94 +280,99 @@
   drop.ondrop = e => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
   fileInput.onchange = () => handleFiles(fileInput.files);
 
-  function handleFiles(files) {
+  async function openEditPost(post) {
+    editingPostId = post.id;
+    resetModal();
+    document.getElementById('modalTitle').textContent = '게시글 수정';
+    pendingFiles = post.images.map((url) => ({
+      originalUrl: url,
+      croppedUrl: null,
+      file: null,
+      isExisting: true
+    }));
+    selectedThumbIdx = post.images.indexOf(post.thumb);
+    if (selectedThumbIdx === -1) selectedThumbIdx = 0;
+    editingIdx = 0;
+    refreshPreviewGrid();
+    modal.classList.add('open');
+  }
+
+  async function handleFiles(files) {
+    uploadingMsg.style.display = 'block'; // 압축 중임을 알림
+    uploadingMsg.textContent = '이미지 최적화 중...';
+    
     let loaded = 0;
     const total = files.length;
     const wasEmpty = pendingFiles.length === 0;
 
-    Array.from(files).forEach((f) => {
+    for (const f of Array.from(files)) {
       const reader = new FileReader();
-      reader.onload = e => {
-        const newFileObj = { originalUrl: e.target.result, croppedUrl: null, file: f };
-        pendingFiles.push(newFileObj);
-        loaded++;
-        if (loaded === total) {
-          if (wasEmpty) {
-            selectedThumbIdx = 0;
-            editingIdx = 0;
-          }
-          fileInput.value = '';
-          refreshPreviewGrid();
-        }
-      };
-      reader.readAsDataURL(f);
-    });
+      const dataUrl = await new Promise(resolve => {
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(f);
+      });
+      
+      // [압축 실행]
+      const compressedUrl = await compressImage(dataUrl, 1200, 0.8);
+      
+      pendingFiles.push({ 
+        originalUrl: compressedUrl, // 최적화된 주소를 원본으로 저장
+        croppedUrl: null, 
+        file: f, 
+        isExisting: false 
+      });
+      
+      loaded++;
+      if (loaded === total) {
+        if (wasEmpty) { selectedThumbIdx = 0; editingIdx = 0; }
+        fileInput.value = '';
+        uploadingMsg.style.display = 'none';
+        uploadingMsg.textContent = '처리 중...';
+        refreshPreviewGrid();
+      }
+    }
   }
 
   function refreshPreviewGrid() {
     previewGrid.innerHTML = '';
     pendingFiles.forEach((_, i) => renderPreviewItem(i));
-    
     const hasFiles = pendingFiles.length > 0;
     document.getElementById('bottomImageCropBtn').style.opacity = hasFiles ? '1' : '0.5';
     document.getElementById('bottomThumbCropBtn').style.opacity = hasFiles ? '1' : '0.5';
   }
 
   function renderPreviewItem(i) {
-    const wrap = document.createElement('div'); 
-    wrap.className = 'pg-item'; 
+    const wrap = document.createElement('div'); wrap.className = 'pg-item'; 
     if (i === editingIdx) wrap.classList.add('is-editing');
     wrap.id = `pg-${i}`;
-
     const img = document.createElement('img');
     img.src = pendingFiles[i].croppedUrl || pendingFiles[i].originalUrl;
     if (i === selectedThumbIdx) img.classList.add('is-thumb');
-
-    // 이미지 클릭 시 수정 대상으로 선택
-    wrap.onclick = () => {
-      editingIdx = i;
-      refreshPreviewGrid();
-    };
-
+    wrap.onclick = () => { editingIdx = i; refreshPreviewGrid(); };
     const btns = document.createElement('div'); btns.className = 'pg-btns';
-    
-    // 대표 설정
     const thumbBtnEl = document.createElement('button'); thumbBtnEl.className = 'pg-btn thumb-btn'; thumbBtnEl.textContent = '★ 대표';
-    thumbBtnEl.onclick = e => { 
-      e.stopPropagation(); 
-      selectedThumbIdx = i;
-      editingIdx = i; // 대표로 지정하면 수정 타겟도 같이 이동
-      croppedThumbBlob = null; 
-      refreshPreviewGrid();
-    };
-
-    // 개별 삭제
+    thumbBtnEl.onclick = e => { e.stopPropagation(); selectedThumbIdx = i; editingIdx = i; croppedThumbBlob = null; refreshPreviewGrid(); };
     const delBtnEl = document.createElement('button'); delBtnEl.className = 'pg-btn del-btn'; delBtnEl.textContent = '✖ 삭제';
     delBtnEl.onclick = e => { 
       e.stopPropagation(); 
       pendingFiles.splice(i, 1);
       if (selectedThumbIdx >= pendingFiles.length) selectedThumbIdx = 0;
       if (editingIdx >= pendingFiles.length) editingIdx = 0;
-      refreshPreviewGrid();
+      refreshPreviewGrid(); 
     };
-
-    btns.appendChild(thumbBtnEl);
-    btns.appendChild(delBtnEl);
-
+    btns.appendChild(thumbBtnEl); btns.appendChild(delBtnEl);
     if (i === selectedThumbIdx) {
       const lbl = document.createElement('span'); lbl.className = 'thumb-label'; lbl.textContent = '대표'; wrap.appendChild(lbl);
     }
-
     wrap.appendChild(img); wrap.appendChild(btns);
     previewGrid.appendChild(wrap);
   }
 
   function openCrop(i, mode) {
     if (i === null || !pendingFiles[i]) return;
-    cropTargetIdx = i;
-    cropMode = mode;
+    cropTargetIdx = i; cropMode = mode;
     cropImg.src = pendingFiles[i].croppedUrl || pendingFiles[i].originalUrl;
-    document.getElementById('cropTitle').textContent = mode === 'image' ? '상세페이지 사진 크롭' : '메인 그리드용 썸네일 크롭';
+    document.getElementById('cropTitle').textContent = mode === 'image' ? '사진 크롭' : '썸네일 크롭';
     cropSelection.style.display = 'none'; cropStart = null; cropEnd = null;
     cropModal.classList.add('open');
   }
@@ -369,7 +386,6 @@
     cropModal.classList.remove('open');
   };
 
-  // Crop Logic (동일)
   cropContainer.addEventListener('mousedown', e => {
     const r = cropImg.getBoundingClientRect();
     cropStart = { x: e.clientX - r.left, y: e.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSel(); e.preventDefault();
@@ -380,7 +396,7 @@
     cropEnd = { x: Math.max(0, Math.min(e.clientX - r.left, cropImg.offsetWidth)), y: Math.max(0, Math.min(e.clientY - r.top, cropImg.offsetHeight)) };
     updateCropSel();
   });
-  window.addEventListener('mouseup', () => { isDragging = false; });
+  window.addEventListener('mouseup', () => isDragging = false);
 
   function updateCropSel() {
     if (!cropStart || !cropEnd) return;
@@ -398,9 +414,10 @@
     const src = new Image();
     src.onload = () => {
       cropCanvas.getContext('2d').drawImage(src, x*sx, y*sy, w*sx, h*sy, 0, 0, cropCanvas.width, cropCanvas.height);
-      const resultData = cropCanvas.toDataURL('image/jpeg', 0.92);
+      const resultData = cropCanvas.toDataURL('image/jpeg', 0.85); // 크롭 결과도 압축 적용
       if (cropMode === 'image') {
         pendingFiles[cropTargetIdx].croppedUrl = resultData;
+        pendingFiles[cropTargetIdx].isExisting = false;
         refreshPreviewGrid();
       } else {
         fetch(resultData).then(res => res.blob()).then(blob => { croppedThumbBlob = blob; alert('썸네일 크롭 완료!'); });
@@ -414,35 +431,49 @@
     if (!pendingFiles.length) return alert('사진을 선택해주세요.');
     uploadingMsg.style.display = 'block'; document.getElementById('savePost').disabled = true;
     try {
-      const postId = Date.now().toString();
+      const postId = editingPostId || Date.now().toString();
       const imageUrls = [];
       for (let i = 0; i < pendingFiles.length; i++) {
         const pf = pendingFiles[i];
-        let blob = pf.croppedUrl ? await (await fetch(pf.croppedUrl)).blob() : pf.file;
-        const ext = pf.file.name ? pf.file.name.split('.').pop() : 'jpg';
-        const path = `${postId}/${i}.${ext}`;
-        const { error } = await sb.storage.from('gallery').upload(path, blob);
-        if (error) throw error;
-        imageUrls.push(sb.storage.from('gallery').getPublicUrl(path).data.publicUrl);
+        if (pf.isExisting && !pf.croppedUrl) {
+          imageUrls.push(pf.originalUrl);
+        } else {
+          let blob = pf.croppedUrl ? await (await fetch(pf.croppedUrl)).blob() : await (await fetch(pf.originalUrl)).blob();
+          const path = `${postId}/${Date.now()}_${i}.jpg`;
+          const { error } = await sb.storage.from('gallery').upload(path, blob);
+          if (error) throw error;
+          imageUrls.push(sb.storage.from('gallery').getPublicUrl(path).data.publicUrl);
+        }
       }
       let thumbUrl = imageUrls[selectedThumbIdx];
       if (croppedThumbBlob) {
-        const thumbPath = `${postId}/thumb.jpg`;
+        const thumbPath = `${postId}/thumb_${Date.now()}.jpg`;
         const { error: tErr } = await sb.storage.from('gallery').upload(thumbPath, croppedThumbBlob);
         if (tErr) throw tErr;
         thumbUrl = sb.storage.from('gallery').getPublicUrl(thumbPath).data.publicUrl;
       }
-      await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
+      if (editingPostId) {
+        const oldPost = posts.find(p => p.id === editingPostId);
+        const filesToDelete = oldPost.images.filter(url => !imageUrls.includes(url))
+                               .concat(oldPost.thumb !== thumbUrl && oldPost.thumb.includes('/thumb_') ? [oldPost.thumb] : [])
+                               .map(url => url.split('/gallery/')[1]);
+        if (filesToDelete.length) sb.storage.from('gallery').remove(filesToDelete);
+        await sb.from('posts').update({ thumb: thumbUrl, images: imageUrls }).eq('id', editingPostId);
+      } else {
+        await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
+      }
       modal.classList.remove('open'); await loadPosts();
     } catch (e) { alert('오류: ' + e.message); }
     finally { uploadingMsg.style.display = 'none'; document.getElementById('savePost').disabled = false; }
   };
 
   function resetModal() {
-    pendingFiles = []; selectedThumbIdx = 0; editingIdx = 0; croppedThumbBlob = null; previewGrid.innerHTML = ''; fileInput.value = '';
+    pendingFiles = []; selectedThumbIdx = 0; editingIdx = 0; croppedThumbBlob = null; 
+    previewGrid.innerHTML = ''; fileInput.value = '';
+    document.getElementById('modalTitle').textContent = '새 게시글';
   }
 
-  // 삭제/그리드/상세/라이트박스 로직 (기존과 동일)
+  // 삭제/그리드/상세/라이트박스 (기존과 동일)
   document.getElementById('confirmCancelBtn').onclick = () => confirmModal.classList.remove('open');
   document.getElementById('confirmDeleteBtn').onclick = async () => {
     confirmModal.classList.remove('open');
@@ -467,9 +498,13 @@
       if (post.images.length > 1) {
         const icon = document.createElement('span'); icon.className = 'multi-icon'; icon.textContent = '⧉'; item.appendChild(icon);
       }
-      const delBtn = document.createElement('button'); delBtn.className = 'delete-btn'; delBtn.textContent = '🗑️ 삭제';
+      const btns = document.createElement('div'); btns.className = 'grid-btns';
+      const editBtn = document.createElement('button'); editBtn.className = 'edit-btn'; editBtn.textContent = '✏️ 수정';
+      editBtn.onclick = e => { e.stopPropagation(); openEditPost(post); };
+      const delBtn = document.createElement('button'); delBtn.className = 'del-btn'; delBtn.textContent = '🗑️ 삭제';
       delBtn.onclick = e => { e.stopPropagation(); deleteTargetId = post.id; confirmModal.classList.add('open'); };
-      item.appendChild(delBtn);
+      btns.appendChild(editBtn); btns.appendChild(delBtn);
+      item.appendChild(btns);
       item.onclick = () => openDetail(post);
       gridEl.appendChild(item);
     });
