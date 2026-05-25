@@ -17,6 +17,7 @@
   .page { display: none; }
   .page.active { display: block; }
 
+  /* GRID */
   .grid-wrap { max-width: 935px; margin: 0 auto; padding: 20px 12px; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
   .grid-item { aspect-ratio: 1; overflow: hidden; cursor: pointer; position: relative; background: #f5f5f5; }
@@ -27,19 +28,10 @@
   .grid-item:hover .delete-btn { display: block; }
   .empty-msg { text-align: center; color: #aaa; font-size: 0.9rem; margin-top: 60px; grid-column: 1/-1; }
 
-  .detail-wrap { max-width: 700px; margin: 0 auto; padding: 24px 12px; }
-  .slider { position: relative; background: #f5f5f5; border-radius: 4px; overflow: hidden; aspect-ratio: 1; }
-  .slider img { width: 100%; height: 100%; object-fit: contain; display: none; }
-  .slider img.active { display: block; }
-  .slider-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.85); border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 1rem; cursor: pointer; }
-  .slider-btn.prev { left: 10px; }
-  .slider-btn.next { right: 10px; }
-  .slider-dots { text-align: center; margin-top: 12px; }
-  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ddd; margin: 0 3px; cursor: pointer; }
-  .dot.active { background: #111; }
-  .thumb-row { display: flex; gap: 6px; margin-top: 12px; overflow-x: auto; padding-bottom: 4px; }
-  .thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 3px; cursor: pointer; opacity: 0.5; flex-shrink: 0; border: 2px solid transparent; }
-  .thumb.active { opacity: 1; border-color: #111; }
+  /* DETAIL - 스크롤 뷰 */
+  .detail-wrap { max-width: 700px; margin: 0 auto; padding: 16px 12px 40px; }
+  .detail-images { display: flex; flex-direction: column; gap: 4px; }
+  .detail-images img { width: 100%; height: auto; display: block; border-radius: 2px; }
 
   /* MODAL */
   .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; }
@@ -101,9 +93,7 @@
 
 <div class="page" id="detailPage">
   <div class="detail-wrap">
-    <div class="slider" id="slider"></div>
-    <div class="slider-dots" id="dots"></div>
-    <div class="thumb-row" id="thumbRow"></div>
+    <div class="detail-images" id="detailImages"></div>
   </div>
 </div>
 
@@ -155,7 +145,6 @@
 <canvas id="cropCanvas" style="display:none;"></canvas>
 
 <script>
-  // ✅ Supabase 설정
   const SUPABASE_URL = 'https://xdqgrflrxjocnjkwacdw.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_njD2UUT3CcW-III-r859_w_VMhuSqk5';
   const { createClient } = supabase;
@@ -163,22 +152,16 @@
 
   let posts = [];
   let currentPost = null;
-  let currentSlide = 0;
   let selectedThumbIdx = 0;
   let pendingFiles = [];
   let croppedThumb = null;
   let deleteTargetId = null;
-
-  // Crop state
   let cropStart = null, cropEnd = null, isDragging = false;
 
   const gridEl = document.getElementById('grid');
   const modal = document.getElementById('modal');
   const fileInput = document.getElementById('fileInput');
   const previewThumbs = document.getElementById('previewThumbs');
-  const slider = document.getElementById('slider');
-  const dotsEl = document.getElementById('dots');
-  const thumbRow = document.getElementById('thumbRow');
   const backBtn = document.getElementById('backBtn');
   const navTitle = document.getElementById('navTitle');
   const cropBtn = document.getElementById('cropBtn');
@@ -190,8 +173,8 @@
   const cropStatus = document.getElementById('cropStatus');
   const uploadingMsg = document.getElementById('uploadingMsg');
   const confirmModal = document.getElementById('confirmModal');
+  const detailImages = document.getElementById('detailImages');
 
-  // Load posts from Supabase
   async function loadPosts() {
     const { data, error } = await sb.from('posts').select('*').order('created_at', { ascending: false });
     if (error) { console.error(error); return; }
@@ -199,7 +182,6 @@
     renderGrid();
   }
 
-  // Modal open/close
   document.getElementById('openModal').onclick = () => { resetModal(); modal.classList.add('open'); };
   document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
   document.getElementById('fileDrop').onclick = () => fileInput.click();
@@ -210,12 +192,9 @@
   fileInput.onchange = () => handleFiles(fileInput.files);
 
   function handleFiles(files) {
-    pendingFiles = [];
-    previewThumbs.innerHTML = '';
-    selectedThumbIdx = 0;
-    croppedThumb = null;
-    cropStatus.textContent = '';
-    cropBtn.style.display = 'none';
+    pendingFiles = []; previewThumbs.innerHTML = '';
+    selectedThumbIdx = 0; croppedThumb = null;
+    cropStatus.textContent = ''; cropBtn.style.display = 'none';
     let loaded = 0;
     const total = files.length;
     const fileArr = Array.from(files);
@@ -226,10 +205,7 @@
         dataUrls[i] = { url: e.target.result, file: f };
         loaded++;
         if (loaded === total) {
-          dataUrls.forEach((d, idx) => {
-            pendingFiles.push(d);
-            renderPreviewThumb(d.url, idx);
-          });
+          dataUrls.forEach((d, idx) => { pendingFiles.push(d); renderPreviewThumb(d.url, idx); });
           cropBtn.style.display = 'inline-block';
         }
       };
@@ -238,43 +214,28 @@
   }
 
   function renderPreviewThumb(url, i) {
-    const wrap = document.createElement('div');
-    wrap.className = 'pt';
-    const img = document.createElement('img');
-    img.src = url;
+    const wrap = document.createElement('div'); wrap.className = 'pt';
+    const img = document.createElement('img'); img.src = url;
     if (i === 0) img.classList.add('selected-thumb');
     img.onclick = () => {
       document.querySelectorAll('.preview-thumbs .pt img').forEach(el => el.classList.remove('selected-thumb'));
-      img.classList.add('selected-thumb');
-      selectedThumbIdx = i;
-      croppedThumb = null;
-      cropStatus.textContent = '';
+      img.classList.add('selected-thumb'); selectedThumbIdx = i; croppedThumb = null; cropStatus.textContent = '';
     };
-    const star = document.createElement('span');
-    star.className = 'star';
-    star.textContent = '대표';
-    wrap.appendChild(img);
-    wrap.appendChild(star);
-    previewThumbs.appendChild(wrap);
+    const star = document.createElement('span'); star.className = 'star'; star.textContent = '대표';
+    wrap.appendChild(img); wrap.appendChild(star); previewThumbs.appendChild(wrap);
   }
 
-  // Crop
   cropBtn.onclick = () => {
     if (!pendingFiles.length) return;
     cropImg.src = pendingFiles[selectedThumbIdx].url;
-    cropSelection.style.display = 'none';
-    cropStart = null; cropEnd = null;
+    cropSelection.style.display = 'none'; cropStart = null; cropEnd = null;
     cropModal.classList.add('open');
   };
   document.getElementById('cropCancelBtn').onclick = () => cropModal.classList.remove('open');
 
   cropContainer.addEventListener('mousedown', e => {
     const r = cropImg.getBoundingClientRect();
-    cropStart = { x: e.clientX - r.left, y: e.clientY - r.top };
-    cropEnd = { ...cropStart };
-    isDragging = true;
-    updateCropSelection();
-    e.preventDefault();
+    cropStart = { x: e.clientX - r.left, y: e.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSelection(); e.preventDefault();
   });
   window.addEventListener('mousemove', e => {
     if (!isDragging) return;
@@ -285,8 +246,7 @@
   window.addEventListener('mouseup', () => { isDragging = false; });
   cropContainer.addEventListener('touchstart', e => {
     const t = e.touches[0], r = cropImg.getBoundingClientRect();
-    cropStart = { x: t.clientX - r.left, y: t.clientY - r.top };
-    cropEnd = { ...cropStart }; isDragging = true; updateCropSelection(); e.preventDefault();
+    cropStart = { x: t.clientX - r.left, y: t.clientY - r.top }; cropEnd = { ...cropStart }; isDragging = true; updateCropSelection(); e.preventDefault();
   }, { passive: false });
   window.addEventListener('touchmove', e => {
     if (!isDragging) return;
@@ -309,8 +269,7 @@
     const x = Math.min(cropStart.x, cropEnd.x), y = Math.min(cropStart.y, cropEnd.y);
     const w = Math.abs(cropEnd.x - cropStart.x), h = Math.abs(cropEnd.y - cropStart.y);
     if (w < 4 || h < 4) { cropModal.classList.remove('open'); return; }
-    const scaleX = cropImg.naturalWidth / cropImg.offsetWidth;
-    const scaleY = cropImg.naturalHeight / cropImg.offsetHeight;
+    const scaleX = cropImg.naturalWidth / cropImg.offsetWidth, scaleY = cropImg.naturalHeight / cropImg.offsetHeight;
     cropCanvas.width = w * scaleX; cropCanvas.height = h * scaleY;
     const ctx = cropCanvas.getContext('2d');
     const src = new Image();
@@ -319,23 +278,18 @@
       croppedThumb = cropCanvas.toDataURL('image/jpeg', 0.92);
       const thumbImgs = document.querySelectorAll('.preview-thumbs .pt img');
       if (thumbImgs[selectedThumbIdx]) thumbImgs[selectedThumbIdx].src = croppedThumb;
-      cropStatus.textContent = '✅ 크롭이 적용됐어요!';
-      cropModal.classList.remove('open');
+      cropStatus.textContent = '✅ 크롭이 적용됐어요!'; cropModal.classList.remove('open');
     };
     src.src = pendingFiles[selectedThumbIdx].url;
   };
 
-  // Save post
   document.getElementById('savePost').onclick = async () => {
     if (!pendingFiles.length) return alert('사진을 선택해주세요.');
     uploadingMsg.style.display = 'block';
     document.getElementById('savePost').disabled = true;
-
     try {
       const postId = Date.now().toString();
       const imageUrls = [];
-
-      // Upload images
       for (let i = 0; i < pendingFiles.length; i++) {
         const f = pendingFiles[i].file;
         const ext = f.name.split('.').pop();
@@ -345,8 +299,6 @@
         const { data } = sb.storage.from('gallery').getPublicUrl(path);
         imageUrls.push(data.publicUrl);
       }
-
-      // Upload cropped thumb or use selected image
       let thumbUrl = imageUrls[selectedThumbIdx];
       if (croppedThumb) {
         const blob = await (await fetch(croppedThumb)).blob();
@@ -356,11 +308,8 @@
         const { data } = sb.storage.from('gallery').getPublicUrl(thumbPath);
         thumbUrl = data.publicUrl;
       }
-
-      // Save to DB
       const { error: dbErr } = await sb.from('posts').insert({ id: postId, thumb: thumbUrl, images: imageUrls });
       if (dbErr) throw dbErr;
-
       modal.classList.remove('open');
       await loadPosts();
     } catch (e) {
@@ -377,19 +326,13 @@
     cropStatus.textContent = ''; cropBtn.style.display = 'none';
   }
 
-  // Delete
   document.getElementById('confirmCancelBtn').onclick = () => confirmModal.classList.remove('open');
   document.getElementById('confirmDeleteBtn').onclick = async () => {
     confirmModal.classList.remove('open');
     if (!deleteTargetId) return;
     const post = posts.find(p => p.id === deleteTargetId);
     if (!post) return;
-
-    // Delete files from storage
-    const paths = post.images.map(url => {
-      const parts = url.split('/gallery/');
-      return parts[1];
-    });
+    const paths = post.images.map(url => url.split('/gallery/')[1]);
     if (post.thumb.includes('/thumb.jpg')) paths.push(`${post.id}/thumb.jpg`);
     await sb.storage.from('gallery').remove(paths);
     await sb.from('posts').delete().eq('id', deleteTargetId);
@@ -404,18 +347,13 @@
       return;
     }
     posts.forEach(post => {
-      const item = document.createElement('div');
-      item.className = 'grid-item';
-      const img = document.createElement('img');
-      img.src = post.thumb;
+      const item = document.createElement('div'); item.className = 'grid-item';
+      const img = document.createElement('img'); img.src = post.thumb;
       item.appendChild(img);
       if (post.images.length > 1) {
-        const icon = document.createElement('span');
-        icon.className = 'multi-icon'; icon.textContent = '⧉';
-        item.appendChild(icon);
+        const icon = document.createElement('span'); icon.className = 'multi-icon'; icon.textContent = '⧉'; item.appendChild(icon);
       }
-      const delBtn = document.createElement('button');
-      delBtn.className = 'delete-btn'; delBtn.textContent = '🗑️ 삭제';
+      const delBtn = document.createElement('button'); delBtn.className = 'delete-btn'; delBtn.textContent = '🗑️ 삭제';
       delBtn.onclick = e => { e.stopPropagation(); deleteTargetId = post.id; confirmModal.classList.add('open'); };
       item.appendChild(delBtn);
       item.onclick = () => openDetail(post);
@@ -424,13 +362,19 @@
   }
 
   function openDetail(post) {
-    currentPost = post; currentSlide = 0;
-    renderSlider();
+    currentPost = post;
+    detailImages.innerHTML = '';
+    post.images.forEach(src => {
+      const img = document.createElement('img');
+      img.src = src;
+      detailImages.appendChild(img);
+    });
     document.getElementById('gridPage').classList.remove('active');
     document.getElementById('detailPage').classList.add('active');
     backBtn.style.display = 'block';
     document.getElementById('openModal').style.display = 'none';
     navTitle.textContent = '';
+    window.scrollTo(0, 0);
   }
 
   backBtn.onclick = () => {
@@ -440,42 +384,6 @@
     document.getElementById('openModal').style.display = 'block';
     navTitle.textContent = 'GALLERY';
   };
-
-  function renderSlider() {
-    slider.innerHTML = ''; dotsEl.innerHTML = ''; thumbRow.innerHTML = '';
-    currentPost.images.forEach((src, i) => {
-      const img = document.createElement('img');
-      img.src = src;
-      if (i === currentSlide) img.classList.add('active');
-      slider.appendChild(img);
-      const dot = document.createElement('span');
-      dot.className = 'dot' + (i === currentSlide ? ' active' : '');
-      dot.onclick = () => goSlide(i); dotsEl.appendChild(dot);
-      const th = document.createElement('img');
-      th.className = 'thumb' + (i === currentSlide ? ' active' : '');
-      th.src = src; th.onclick = () => goSlide(i); thumbRow.appendChild(th);
-    });
-    if (currentPost.images.length > 1) {
-      const prev = document.createElement('button');
-      prev.className = 'slider-btn prev'; prev.textContent = '‹';
-      prev.onclick = () => goSlide(currentSlide - 1);
-      const next = document.createElement('button');
-      next.className = 'slider-btn next'; next.textContent = '›';
-      next.onclick = () => goSlide(currentSlide + 1);
-      slider.appendChild(prev); slider.appendChild(next);
-    }
-  }
-
-  function goSlide(n) {
-    const imgs = slider.querySelectorAll('img');
-    const dots = dotsEl.querySelectorAll('.dot');
-    const thumbs = thumbRow.querySelectorAll('.thumb');
-    const total = currentPost.images.length;
-    currentSlide = (n + total) % total;
-    imgs.forEach((el, i) => el.classList.toggle('active', i === currentSlide));
-    dots.forEach((el, i) => el.classList.toggle('active', i === currentSlide));
-    thumbs.forEach((el, i) => el.classList.toggle('active', i === currentSlide));
-  }
 
   loadPosts();
 </script>
